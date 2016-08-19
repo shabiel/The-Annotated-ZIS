@@ -2,13 +2,16 @@
  ;;8.0;KERNEL;**18,36,69,104,391,440,499,546**;JUL 10, 1995;Build 9
  ;Per VHA Directive 2004-038, this routine should not be modified
  ;Call with a Go from ^%ZIS2
+ ; 1. Preopen exeucte (but don't run for Taskman)
+ ;    Can spit out %ZISQUIT to POP us out.
  I %ZIS'["T",$G(^%ZIS(1,+%E,"POX"))]"" D XPOX^ZISX(%E) ;Pre-Open
  I $D(%ZISQUIT) S POP=1 K %ZISQUIT
  S %ZISCHK=1
  ;See if need to lock.
+ ; 2. Lock if requested (lock doesn't happen here, but in %ZIS4)
  K %ZISLOCK
  I %ZIS'["T",+$G(^%ZIS(1,+%E,"GBL")) S %ZISLOCK=$NA(^%ZIS("lock",IO))
- ;
+ ; 3. If terminal, go to TRM; otherwise, call the code in %ZIS6
  I 'POP G TRM:(%ZTYPE["TRM"),@(%ZTYPE_"^%ZIS6") ;Jump to next part
  ;
 Q ;%ZIS6 Returns here
@@ -19,6 +22,8 @@ Q ;%ZIS6 Returns here
  ;
 VTRM ;Virtual terminal type
 TRM ;Terminal type
+ ; 4. Terminal gets margins, sets parameters, and sees if it can be queued.
+ ; NB: Remember that Printers are terminals
  D MARGN:'POP,SETPAR:'POP ;Terminal type
  I 'POP,%ZIS'["T",%ZISB=1,'$D(IOP),IO'=IO(0),'$D(IO("Q")),%ZIS["Q" D AQUE
  D W("")
@@ -32,15 +37,20 @@ DEVOK N X,Y,X1 ;Not sure this is needed
  Q
  ;
 MARGN ;Get the margin and page length
+ ; 5. %Y is the semicolon pieces (2...) entered by the user or setup in IOP
  S %A=$P(%Y,";",1)
+ ; 5a. If first piece looks like a subtype, process and shift A < 1 ; piece, recurse
  I %A?1A.ANP D SUBIEN(.%A,1) I $D(^%ZIS(2,%A,1)) K %Z91 D ST(1) S %Y=$P(%Y,";",2,9),%ZISMY=$P(%ZISMY,";",2,9) G MARGN
+ ; 5b. %A now is the right margin. Reset %Z91 if it meets these criteria
  I %A>3 S $P(%Z91,"^")=$S(%A>255:255,1:+%A)
+ ; 5c. Page length, if speicified, gets set.
  I $P(%Y,";",2) S $P(%Z91,"^",3)=+$S($P(%Y,";",2)>65534:65534,1:$P(%Y,";",2)) ;Cache fix for $Y#65535 wrap
- ;
+ ; 5d. If IO("P") is defined (M, L, P), set the right pieces of %Z91
 ALTP I '$D(IO("P")) Q:%A>3  G ASKMAR:%ZTYPE["TRM" Q
  S %X=$F(IO("P"),"M") I %X S %A=+$E(IO("P"),%X,99),$P(%Z91,"^")=$S(%A>255:255,1:%A)
  S %X=$F(IO("P"),"L") I %X S $P(%Z91,"^",3)=+$E(IO("P"),%X,99)
  Q:%A>3!(%ZTYPE'["TRM")
+ ; 5e. Ask margins if %ZIS["M", home device, and both ask device and ask parameters are on
 ASKMAR I %ZIS["M",'$D(IOP),$S(%E=%H:+$P(%Z,"^",3),1:1),$P(%Z,"^",4) W "    Right Margin: " W:$P(%Z91,"^")]"" +%Z91,"// "
  E  Q
  D SBR^%ZIS1 I '$D(DTOUT)&'$D(DUOUT) S:%X=""&($P(%Z91,"^")]"") %X=+%Z91 G ASKMAR:%X'?1.N S $P(%Z91,"^")=$S(%X>255:255,1:%X) Q

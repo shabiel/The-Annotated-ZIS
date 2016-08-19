@@ -2,20 +2,28 @@
  ;;8.0;KERNEL;**18,49,69,104,112,199,391,440,499,518,546,572**;JUL 10, 1995;Build 7
  ;Per VHA Directive 2004-038, this routine should not be modified
 MAIN ;Called from %ZIS with a GOTO
+ ; 1. If Ask Device isn't marked, goto ^ZIS2 and be done.
  ;Check for "ASK DEVICE"
  I '$D(IOP),$D(^%ZIS(1,%E,0)),'$P(^(0),"^",3) S %A=%H,%Z=^(0) D L2^%ZIS2 G EXIT
 L1 ;Main Device Lookup Loop
+ ; 2. Ask about queing if a queing attempt previously failed.
  I '$D(IOP),$D(IO("Q")),POP D AQUE^%ZIS3 K:%=2 IO("Q") S:%=2 %ZISB=$S(%ZIS'["N":2,1:0) I %=-1 S POP=1 G EXIT
  S %E=%H,POP=0,%IS=%ZIS ;Reset %IS from %ZIS
  I %ZIS'["Q",$D(XQNOGO) S POP=1 W:'$D(IOP) !,$C(7),"OUTPUT IS NEVER ALLOWED FOR THIS OPTION" G EXIT
+ ; 3. Ask user for device is IOP is not set (R).
+ ;    If IOP is set, %ZISVT=IOP,%X=IOP,%ZIS=%ZIS_X
+ ;    If IOP is not set, %X is the device name and %Y is all the semicolon pieces
  D IOP:$D(IOP),R:'$D(IOP)
  G EXIT:$D(DTOUT)!$D(DUOUT)!(POP&$D(IOP)),L1:POP&'$D(IOP)
+ ; 4. %A is the Device IEN from LKUP
  D LKUP I %A'>0 S POP=1 D:'$D(DUOUT) MSG1 K DUOUT
  I %A>0,'$D(^%ZIS(1,%A,0)) D MSG2 K %ZISIOS S POP=1
  I POP G EXIT:$D(IOP),L1:'$D(IOP)
+ ; 5. Variables set below are important
  S %E=%A,%Z1=$G(^%ZIS(1,%A,1)),%Z=^(0) ;Set naked for screen
  I $D(%ZIS("S")) N Y S Y=%E D XS^ZISX S:'$T POP=1 G G:POP ;Screen Code
  W:'$D(IOP)&($P(%Z,"^",2)'=$I)&($P(%Z1,"^")]"") "  ",$P(%Z1,"^")
+ ; 6. Continue to %ZIS2
  D L2^%ZIS2 ;Call
 G G L1:POP&'$D(IOP)&'($D(DTOUT)!$D(DUOUT)) ;Didn't get it
  ;

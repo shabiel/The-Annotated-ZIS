@@ -1,7 +1,11 @@
 %ZIS ;SFISC/AC,RWF -- DEVICE HANDLER ;05/22/12  12:31
  ;;8.0;KERNEL;**18,23,69,112,199,191,275,363,440,499,524,546,599**;JUL 10, 1995;Build 8
+ ;
+ ; Sam's notes are numbered 1. 2. 3. etc. Other notes are not mine.
+ ;
  ;Per VHA Directive 2004-038, this routine should not be modified
  ; ZEXCEPT: %IS,%ZIS,%ZISVT,DTIME,ION,IOP,IOT,POP,ZTIO,ZTQUEUED
+ ; 1. Set-up and kill variables (cf. CLEAN)
  N %ZISOS,%ZISV
  S U="^",%ZISOS=$G(^%ZOSF("OS")),%ZISV=$G(^%ZOSF("VOL")),POP=0 ;p524
  ;Check SPOOLER special case first
@@ -24,10 +28,16 @@ INIT ;
 A D CLEAN ;p363
  K IO("P"),IO("Q"),IO("S"),IO("T")
 K2 D K2^%ZIS1
+ ; 2. Set IO(0) to IO (INIT+1) or $I if still empty.
  S %ZISB=%ZIS'["N",(%E,%H)=0,%Y="" S:'$D(IO(0)) IO(0)=$I
+ ; 3. Read Cached Home values, or if not, Cache them.
+ ; 4. is in GETHOME
  I $D(IOP),IOP=$I!(IOP="HOME")!(0[IOP),$D(^XUTL("XQ",$J,"IO")) D HOME K %IS,%Y,%ZIS,%ZISB,%ZISV,IOP Q
  ;Don't worry about HOME if %ZIS[0
+ ; 5. GETHOME, then Exit if POP; otherwise continue to ^%ZIS1.
  D:%ZIS'[0 GETHOME G EXIT^%ZIS1:POP,^%ZIS1 ;Jump to next part
+ ; 4. Do lineport lookup, if that fails, do virtual terminal lookup.
+ ;    If not found, tell user and set POP.
 GETHOME I $D(IO("HOME")),$P(IO("HOME"),"^",2)=IO(0) S (%E,%H)=+IO("HOME") Q
  I $D(^XUTL("XQ",$J,"IOS")),$D(^("IO")),IO(0)=^("IO") S (%E,%H)=^("IOS") Q
  ;CALL LINEPORT CODE HERE---

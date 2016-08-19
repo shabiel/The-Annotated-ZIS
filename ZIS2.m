@@ -5,27 +5,31 @@
 L2 ;Entry point from %ZIS1, %E holds the IEN value
  I $D(DTOUT)!$D(DUOUT) K %ZISHP,%ZISHPOP Q
 CHECK ;Get IO check for secondary $I
+ ; 1. Get Primary and Secondary $IOs. If "PRI" isn't set, use Secondary $IO.
  K %ZISCPU N %Z2,%ZFQ
  S POP=0,%Z=^%ZIS(1,%E,0),%Z2=$S(%ZIS("PRI")=1:"",1:$G(^%ZIS(1,%E,2))) ;Get Primary and secondary IO.
  S IO=$S(%ZIS("PRI")=1:$P(%Z,"^",2),$L($P(%Z2,"^")):$P(%Z2,"^"),1:$P(%Z,"^",2)) ;
+ ; 2. Important variables (esp %ZTYPE)
  S %Z90=$G(^(90)),%Z95=$G(^(95)),%ZTIME=$G(^("TIME")),%ZTYPE=$G(^("TYPE"))
+ ; 3. Can you queue this?
  I '$$QUECHK Q
+ ; 4. Special processing for Resource Devices
  I %ZTYPE="RES" S %ZISRL=+$P(%Z1,"^",10) G T
+ ; 5. Queue check for Virtual Terminals
 VTRM I %ZTYPE="VTRM",'('$D(IO("Q"))&(%A=%H)) W:'$D(IOP)&'$D(%ZISHP) *7,"  [YOU CAN NOT SELECT A VIRTUAL TERMINAL]" S POP=1 ;Virtual Terminal Check
  S:%ZTYPE="VTRM"&'$D(IO("Q"))&(%A=%H) IO=$I
- ;
+ ; 6. Queue check for Slave devices
 SLAVE I $D(IO("Q")),$P(%Z,"^",2)=0,$P(%Z,"^",8)']"" W:'$D(IOP) *7,!?10,"  [SLAVE device NOT set up for queuing]" S POP=1 G T
  ;
- ;
+ ; 7. Check if Print Queue (different kind of queue) exists.
  ;**P585 START CJM
 PQ ;Check (if not queueing to secondary system) that print queue is established and available
  I %ZTYPE="PQ",%ZISB!'$P($G(^XTV(8989.3,1,0)),"^",5),(%ZIS'["T"),'$$QEXIST^ZISPQ(%E) D  G T
  .S POP=1
  .W:'$D(IOP) *7,!?10,"  [The Print Queue does not exist]"
  ;**P585 END CJM
- ;
+ ; 8. Devices on other CPUs.
 OCPU D OTHCPU("DEVICE")
- ;
 OOS G T:POP
  ;Out Of Service Check
  I %Z90,$D(DT)#2,%Z90'>DT S POP=1 I '$D(IOP),'$D(%ZISHP) W *7,"  [Out of Service]"
@@ -39,12 +43,15 @@ PTIME G T:POP!(IO=$I)!(IO=0)
  . Q
 DUZ I 'POP D SEC ;Security Check
  ;
-T ;
+T ; 9. Set important variables if we are good to go:
+ ; %A = subtype ptr
  ;
+ ; 9a. %ZISIOS = ien of device
 TMPVAR K IO("S") S %ZISIOS=%E S:IO=0 IO=$I,IO("S")=%H
  S %ZISOPAR=$$IOPAR(%E,"IOPAR")
  S %ZISUPAR=$$IOPAR(%E,"IOUPAR"),%ZISTO=+$P(%ZTIME,"^",2)
  ;Slave Device
+ ; 9b. Slave device: Change IO("S") to be the subtype ptr; set IO to parent device
  I $D(IO("S")) D  I POP Q
  . S IO=$S(%ZIS["S":$P($G(^%ZIS(1,+$P(%Z,"^",8),0)),"^",2),1:IO)
  . I %ZIS["S",IO]"" S %H=+$P(%Z,"^",8),IO("S")=%H,IO(0)=IO
@@ -52,15 +59,19 @@ TMPVAR K IO("S") S %ZISIOS=%E S:IO=0 IO=$I,IO("S")=%H
  . S:IO="" POP=1
  . Q
  S %A=+$G(^%ZIS(1,%E,"SUBTYPE")),%ZISTP=0 ;%A is pointer to subtype
+ ; 9c. If %E (current device) is the same as %H (home device) then load cached
+ ;   parameters into %Z91; otherwise get %Z91 parameters from subtype definition
+ ;   %Z91 = RM ^ FF ^ Page Length ^ Back Space ^ IOXY
  I %E=%H,%ZTYPE["TRM" D  I 1
  . I $D(^XUTL("XQ",$J,"IOST(0)")) D  ;Use home
  . . S %A=+^XUTL("XQ",$J,"IOST(0)"),%Z91="",%ZISTP=1
  . . F %ZISI="IOM","IOF","IOSL","IOBS","IOXY" S %Z91=%Z91_$G(^XUTL("XQ",$J,%ZISI))_"^"
  . E  S %=$$LNPRTSUB^%ZISUTL I %>0 S %A=%,%Z91=""
  E  S %Z91=$P($G(^%ZIS(2,%A,1)),"^",1,4),$P(%Z91,"^",5)=$G(^("XY"))
- ;
+ ; 9d. Set %ZISIOST to subtype name, (0) for IEN.
  D ST^%ZIS3(%ZISTP) S:%ZIS["U" USIO=$P(%Z91,"^",1,4)
 T2 I POP S:%ZIS'["T" IO="" Q
+ ; 10. Continue to %ZIS3
  ;Removed HG from next line.
  ;**P585 START CJM
  ;G ^%ZIS3:"^MTRM^VTRM^TRM^SPL^MT^SDP^HFS^RES^OTH^BAR^IMPC^CHAN^"[("^"_%ZTYPE_"^") ;Jump to next part

@@ -19,17 +19,37 @@ OP1 N $ET S $ET="G OPNERR^%ZIS4"
  Q
 OPNERR S POP=1,IO("LASTERR")=$G(IO("ERROR")),IO("ERROR")=$ZE,$EC=""
  Q
- ;
+ ;(SMH) Code here is OS Specific. GT.M version is in ZIS4GTM
 O ;Gets called for all devices
  N X,%A1
+ ; 1. IO("ZIO") is remote machine name for Virtual Terminals. Happens
+ ;    only if %ZIS["L" which only happens at log-on time.
+ ;    Also sets IO("IP") and IO("CLNM") (only for Cache; GT.M version not)
+ ;    IO("CLNM") only gets set if IO("IP") is non-numeric.
  D:%ZIS["L" ZIO
+ ; 2. If Slave device, open printer port on parent device.
  I $D(IO("S")),$D(^%ZIS(2,IO("S"),10)),^(10)]"" U IO(0) D X10^ZISX ;Open Printer port
+ ; 3. If HFS, IOP, and and caller supplied %ZIS("HFSIO") and %ZIS("IOPAR")
+ ;    set IO to "HFSIO" and %ZISIOPAR to %ZIS("IOPAR")
 OPAR I $D(IOP),%ZTYPE="HFS",$D(%ZIS("HFSIO")),$D(%ZIS("IOPAR")),%ZIS("HFSIO")]"" S IO=%ZIS("HFSIO"),%ZISOPAR=%ZIS("IOPAR")
+ ; 4. Set %A to 
+ ;    Case 1: %ZISOPAR = %ZISOPAR
+ ;    Case 2: Not TRM but IOST starts with C, Right Margin:"C"
+ ;    Case 3: IOST starts wit PK: Right Margin:"P"
+ ;    Default: Right Margin
+ ;    (NB: No "C" or "P" in Cache documentation)
  S %A=$S($L(%ZISOPAR):%ZISOPAR,%ZTYPE'["TRM":"",$E(%ZISIOST,1)="C":"("_+%Z91_":""C"")",$E(%ZISIOST,1,2)="PK":"("_+%Z91_":""P"")",1:+%Z91)
+ ; 5. Append Timeout to %A, and then prepend IO to %A
+ ; %A now looks like $I:(par):TO
  S %A=%A_$S(%A["):":"",%ZTYPE["OTH"&($P(%ZTIME,"^",3)="n"):"",1:":"_%ZISTO),%A=""""_IO_""""_$E(":",%A]"")_%A
+ ; 6. Open!
+ ; - If success, set IO(1,IO)="", IO("ERROR")=""
+ ; - If failure, set IO("ERROR")=$ZE, POP=1
  D O1 I POP W:'$D(IOP) !,?5,$C(7)_"[Device is BUSY]" Q
  U IO S $X=0,$Y=0
+ ; 7. If there use parameters, apply them here.
  I $L(%ZISUPAR) S %A1=""""_IO_""":"_%ZISUPAR U @%A1
+ ; 8. run open execute
  G OXECUTE^%ZIS6
  ;
 O1 N $ET S $ET="G OPNERR^%ZIS4"
